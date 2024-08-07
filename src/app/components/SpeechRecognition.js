@@ -1,75 +1,92 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useRef } from 'react'
 
-export function SpeechRecognition() {
-  var ongoing = false;
-  var recognition = null;
-  const wordsRef = (useRef < HTMLDivElement) | (null > null);
 
-  function verificaStatus() {
-    if (ongoing == true) {
-      recognition.start();
-    }
-  }
+const SpeechRecognition =()=> {
+    const [transcription, setTranscription] = useState([])
+	const [finalTranscription, setFinalTranscription] = useState(false)
+	const socketRef = useRef(null)
 
-  function init() {
-    window.SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.interimResults = true;
-    recognition.lang = "pt-BR";
+	const handleChange = (e) => {
+		setTranscription(e.target.value)
+	}
+    const handleSubmit = (e) => {
+		e.preventDefault()
+	
+		setFinalTranscription(true)
+	}
+	const activateMicrophone =  ( )  => {
+	
+		navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+			if (!MediaRecorder.isTypeSupported('audio/webm'))
+				return alert('Browser not supported')
+			const mediaRecorder = new MediaRecorder(stream, {
+				mimeType: 'audio/webm',
+			})
 
-    var p = document.createElement("span");
-    const words = document.querySelector(".words");
-    words.appendChild(p);
+		//create a websocket connection
+		 const socket = new WebSocket('ws://localhost:3002')
+			socket.onopen = () => {
+				console.log({ event: 'onopen' })
+				mediaRecorder.addEventListener('dataavailable', async (event) => {
+					if (event.data.size > 0 && socket.readyState === 1) {
+						socket.send(event.data)
+					}
+				})
+				mediaRecorder.start(1000)
+			}
 
-    recognition.addEventListener("result", (e) => {
-      const transcript = Array.from(e.results)
-        .map((result) => result[0])
-        .map((result) => result.transcript)
-        .join("");
+			socket.onmessage = (message) => {
+				const received = JSON.parse(message.data)
+				const transcript = received.channel.alternatives[0].transcript
+				if (transcript) {
+					console.log(transcript)
+                    setTranscription(prevItems => [...prevItems, transcript]);
+				}
+			}
 
-      p.textContent = transcript + ", ";
-      if (e.results[0].isFinal) {
-        p = document.createElement("span");
-        words.appendChild(p);
-      }
-    });
-    recognition.addEventListener("end", verificaStatus);
-    recognition.start();
-  }
+			socket.onclose = () => {
+				console.log({ event: 'onclose' })
+			}
 
-  function doStartStopCheck() {
-    if (ongoing == true) {
-      // se tiver rodando, vai interromper
-      ongoing = false;
-      recognition.stop();
-      document.getElementById("btn_speech").innerHTML = "Transcrever Áudio";
-    } else if (recognition) {
-      // se tiver instância SpeechRecognition, apenas reinicia
-      ongoing = true;
-      recognition.start();
-      document.getElementById("btn_speech").innerHTML = "Interromper";
-    } else {
-      // se ainda não criou instância, chama a função para inicialização
-      console.log("init");
-      ongoing = true;
-      init();
-      document.getElementById("btn_speech").innerHTML = "Interromper";
-    }
-  }
+			socket.onerror = (error) => {
+				console.log({ event: 'onerror', error })
+			}
 
-  function rolaScroll() {
-    const w = document.querySelector(".words");
-    w.scrollTop = w.scrollHeight;
-  }
-
-  setInterval(rolaScroll, 1000);
-
-  return (
+			socketRef.current = socket
+		})
+		}
+		
+return(
     <div>
-      <button id="btn_speech" onClick={doStartStopCheck}>
-        {ongoing ? "Interromper" : "Transcrever Áudio"}
-      </button>
+
+        {!finalTranscription ? (
+				<>
+					<form onSubmit={handleSubmit}>
+                        {/*<textarea
+							className="w-full h-80"
+							value={transcription}
+							onChange={handleChange}
+						/>*/}
+                        <div>
+                            <h2>Transcrição</h2>
+                            <div className="text-black">{transcription.join(' ')}</div>
+                        </div>
+						<br />
+                        <button
+                            onClick={activateMicrophone}
+                            type='button'
+                            className="bg-green-500 p-4 rounded-xl text-white">
+                            Gravar 
+                        </button>
+
+					</form>
+				</>
+			) : (
+				<div>
+				</div>
+			)}
     </div>
-  );
+)
 }
+
+export default SpeechRecognition
